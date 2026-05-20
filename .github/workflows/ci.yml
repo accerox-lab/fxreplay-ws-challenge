@@ -135,7 +135,7 @@ jobs:
         run: |
           IMG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-$(echo ${{ github.sha }} | cut -c1-7)"
           docker pull "$IMG"
-          kind load docker-image "$IMG"
+          kind load docker-image "$IMG" --name fxreplay
           echo "IMG=$IMG" >> "$GITHUB_ENV"
       - name: Set kustomize image to the pulled tag
         working-directory: deploy
