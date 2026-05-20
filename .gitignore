@@ -1,0 +1,22 @@
+# Go
+*.test
+*.out
+/app/vendor/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Kubeconfig (never commit a real one)
+kubeconfig*
+*.kubeconfig
+
+# Local secrets
+.env
+*.env.local
+
+# Node (used only for the smoke test client)
+node_modules/
+package-lock.json
+package.json

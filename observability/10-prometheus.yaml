@@ -1,0 +1,45 @@
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: kube-prom-stack
+  namespace: observability
+spec:
+  serviceAccountName: prometheus
+  replicas: 1
+  retention: 6h
+  # serviceMonitorSelector picks up every ServiceMonitor in any namespace that
+  # carries the matching label. Our deploy/40-servicemonitor.yaml sets
+  # `release: kube-prom-stack`, so it gets discovered automatically.
+  serviceMonitorSelector:
+    matchLabels:
+      release: kube-prom-stack
+  serviceMonitorNamespaceSelector: {}
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi
+  securityContext:
+    fsGroup: 2000
+    runAsNonRoot: true
+    runAsUser: 1000
+  # No PVC: this is a demo cluster, restart wipes metrics. Production would
+  # bind a PVC via `storage.volumeClaimTemplate`.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: prometheus
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: prometheus
+    prometheus: kube-prom-stack
+  ports:
+    - name: web
+      port: 9090
+      targetPort: 9090

@@ -1,0 +1,22 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ws-server
+  namespace: ws-demo
+  labels:
+    app.kubernetes.io/name: ws-server
+    # Label that matches the Prometheus serviceMonitorSelector installed
+    # below (see observability/). Production clusters often filter by team
+    # label too — keep it minimal here.
+    release: kube-prom-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ws-server
+  namespaceSelector:
+    matchNames: [ws-demo]
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s

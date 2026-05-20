@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - 00-namespace.yaml
+  - 10-redis.yaml
+  - 20-deployment.yaml
+  - 30-ingress.yaml
+  - 40-servicemonitor.yaml
+
+# The image reference is pinned here and overridden in CI via
+# `kustomize edit set image ws-server=ghcr.io/<owner>/fxreplay-ws-challenge:<tag>`
+# Locally, build with `make build` and `kind load`, then `make deploy` uses
+# the `dev` tag.
+images:
+  - name: ws-server
+    newName: ghcr.io/repo-owner/fxreplay-ws-challenge
+    newTag: dev

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>FXReplay WS Demo</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { font-family: ui-monospace, monospace; background: #0b0d10; color: #d6deeb; margin: 0; padding: 16px; }
+    h1 { font-size: 16px; margin: 0 0 12px; color: #82aaff; }
+    .row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+    .row input, .row button { padding: 6px 10px; font: inherit; background: #1d2027; color: #d6deeb; border: 1px solid #2c3038; border-radius: 4px; }
+    .row button { cursor: pointer; }
+    .row button:hover { background: #2c3038; }
+    .status { padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+    .status.ok { background: #1b4332; color: #b7e4c7; }
+    .status.bad { background: #54141b; color: #f8c4c4; }
+    #log { background: #14161c; border: 1px solid #2c3038; border-radius: 4px; padding: 8px; height: 60vh; overflow-y: auto; white-space: pre-wrap; font-size: 13px; }
+    .msg { margin-bottom: 4px; }
+    .msg.sys { color: #888; }
+    .msg.me { color: #82aaff; }
+    .msg.other { color: #c3e88d; }
+  </style>
+</head>
+<body>
+  <h1>fxreplay-ws-challenge — minimal client</h1>
+  <div class="row">
+    <span>URL:</span>
+    <input id="url" value="" style="flex: 1;" />
+    <button id="connect">connect</button>
+    <span id="status" class="status bad">disconnected</span>
+  </div>
+  <div class="row">
+    <input id="msg" placeholder="type and Enter" style="flex: 1;" disabled />
+    <button id="send" disabled>send</button>
+  </div>
+  <div id="log"></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    $('url').value = `${proto}://${location.host}/ws`;
+
+    let ws = null;
+    function log(text, cls = '') {
+      const div = document.createElement('div');
+      div.className = 'msg ' + cls;
+      const t = new Date().toLocaleTimeString();
+      div.textContent = `[${t}] ${text}`;
+      $('log').appendChild(div);
+      $('log').scrollTop = $('log').scrollHeight;
+    }
+    function setStatus(text, ok) {
+      $('status').textContent = text;
+      $('status').className = 'status ' + (ok ? 'ok' : 'bad');
+      $('msg').disabled = !ok;
+      $('send').disabled = !ok;
+    }
+    $('connect').onclick = () => {
+      if (ws) { ws.close(); return; }
+      ws = new WebSocket($('url').value);
+      log(`connecting to ${$('url').value} ...`, 'sys');
+      ws.onopen = () => { setStatus('connected', true); log('open', 'sys'); $('connect').textContent = 'disconnect'; };
+      ws.onclose = (e) => { setStatus(`closed (${e.code})`, false); log(`close code=${e.code} reason=${e.reason||'-'} wasClean=${e.wasClean}`, 'sys'); $('connect').textContent = 'connect'; ws = null; };
+      ws.onerror = () => log('error', 'sys');
+      ws.onmessage = (e) => {
+        let body = e.data;
+        try {
+          const j = JSON.parse(e.data);
+          body = `from ${j.sender}  body="${j.body}"  ts=${j.ts}`;
+          log(body, j.body && $('msg').dataset.lastSent === j.body ? 'me' : 'other');
+        } catch {
+          log(body, 'other');
+        }
+      };
+    };
+    function send() {
+      const v = $('msg').value;
+      if (!v) return;
+      ws.send(v);
+      $('msg').dataset.lastSent = v;
+      $('msg').value = '';
+    }
+    $('send').onclick = send;
+    $('msg').addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
+  </script>
+</body>
+</html>

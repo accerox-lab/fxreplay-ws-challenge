@@ -1,0 +1,7 @@
+.git
+.github
+deploy
+observability
+client
+*.md
+.kind
