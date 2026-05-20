@@ -1,5 +1,5 @@
 CLUSTER     ?= fxreplay
-IMAGE_REPO  ?= ghcr.io/repo-owner/fxreplay-ws-challenge
+IMAGE_REPO  ?= ghcr.io/accerox-lab/fxreplay-ws-challenge
 IMAGE_TAG   ?= dev
 IMAGE       := $(IMAGE_REPO):$(IMAGE_TAG)
 NS          := ws-demo

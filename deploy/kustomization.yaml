@@ -14,5 +14,5 @@ resources:
 # the `dev` tag.
 images:
   - name: ws-server
-    newName: ghcr.io/repo-owner/fxreplay-ws-challenge
+    newName: ghcr.io/accerox-lab/fxreplay-ws-challenge
     newTag: dev
