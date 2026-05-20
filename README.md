@@ -35,7 +35,11 @@ message" property, and how the cluster sees what it's doing.
 │   ├── 10-prometheus.yaml
 │   ├── 20-grafana.yaml      ConfigMap-mounted dashboard, no Helm
 │   └── kustomization.yaml
-├── .github/workflows/ci.yml GitHub Actions: lint -> build+push -> e2e in kind
+├── gitops/                  ArgoCD glue — CD half of the pipeline
+│   ├── 10-argocd-install.md How to bootstrap ArgoCD on a fresh cluster
+│   ├── 20-argocd-ingress.yaml
+│   └── 30-application.yaml  Tells ArgoCD to watch deploy/ and auto-sync
+├── .github/workflows/ci.yml GitHub Actions: lint -> build+push -> e2e -> bump-tag
 ├── .kind/cluster.yaml       Local cluster definition (1 cp + 2 workers, host port 80/443)
 ├── hack/broadcast-test.js   Smoke test used by CI and humans alike
 └── Makefile                 `make up` brings everything online from zero
@@ -134,7 +138,7 @@ ConfigMap so it loads at startup with no manual import.
 
 ## CI/CD — what GitHub Actions does
 
-`.github/workflows/ci.yml` runs three stages:
+`.github/workflows/ci.yml` runs **four stages**, in order:
 
 1. **lint** — `go vet`, `go build`, and `kustomize build` against both overlay
    directories. Fails fast on a broken manifest. ~15s on a cold runner.
@@ -142,13 +146,68 @@ ConfigMap so it loads at startup with no manual import.
    strategy that covers immutable (`sha-<short>`), human-readable (`<branch>`,
    semver `v*`) and convenience (`latest` on main). Layer cache via GHA cache.
 3. **e2e** — bring up a kind cluster *inside the runner*, install the image we
-   just built, run `hack/broadcast-test.js`. This is the "basic validation
-   step" the challenge asks for; it catches at least the class of bugs where
-   the image is fine in isolation but the manifests have drifted.
+   just built, run `hack/broadcast-test.js`. This is the basic validation
+   step required by the challenge; it catches the class of bugs where the
+   image is fine in isolation but the manifests have drifted.
+4. **bump-tag** — only on `main`, only if `e2e` passed: `kustomize edit set
+   image` on `deploy/kustomization.yaml` writing the verified SHA tag back to
+   the repo with a `[skip ci]` commit. This is the trigger that lets ArgoCD
+   pick up the new image and roll it into the cluster — see *GitOps* below.
 
 Image pushes use the default `GITHUB_TOKEN` for GHCR — no extra secret to
 manage. PRs build but don't push, which keeps the registry clean of throwaway
-tags.
+tags. The bump-tag job uses the same token (with `contents: write` granted
+in the workflow) to push the commit back to `main`.
+
+## GitOps — how a code change ends up running in the cluster
+
+The pipeline above stops at "image is verified and tagged in git". The other
+half — *applying the new manifest to a real cluster* — is owned by **ArgoCD**.
+
+```
+dev push to main
+   │
+   ▼
+GitHub Actions: lint → build → e2e → bump-tag (commits new SHA to deploy/kustomization.yaml)
+   │
+   ▼  (git commit visible in repo)
+ArgoCD (running in the cluster) polls git ~every 3 min
+   │
+   ▼
+detects new commit → applies kustomize → Deployment image updated
+   │
+   ▼
+rolling update fires → graceful shutdown choreography → clients reconnect to new pods
+```
+
+The Application manifest is in `gitops/30-application.yaml`. It tells ArgoCD:
+*"watch this repo's `deploy/` directory, sync it to the `ws-demo` namespace,
+auto-prune drift, auto-heal manual changes."* Once applied, the cluster
+converges to whatever git says. Nobody runs `kubectl apply` against the
+cluster again.
+
+### Why this matters for the challenge
+
+The challenge says:
+
+> *"The pipeline should demonstrate how changes move from source code or
+> configuration are promoted into a running Kubernetes deployment."*
+
+CI alone proves an image works in a throwaway cluster. CI + GitOps proves it
+ends up running in a real, persistent one — and that's the lifecycle the
+challenge is asking about.
+
+### Bootstrapping ArgoCD locally
+
+```bash
+make gitops
+echo "127.0.0.1 argocd.local.test" | sudo tee -a /etc/hosts
+# UI: http://argocd.local.test  (admin / printed password)
+```
+
+The `make gitops` target installs ArgoCD from upstream manifests, applies the
+ingress, then applies the Application. From that moment any commit to `main`
+that touches `deploy/` triggers a sync.
 
 ## Running it locally
 

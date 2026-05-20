@@ -27,6 +27,21 @@ observability: ## Install Prometheus Operator + Prometheus + Grafana
 	kubectl wait --for=condition=available --timeout=60s deployment/prometheus-operator -n default
 	kubectl apply -k observability/
 
+.PHONY: gitops
+gitops: ## Install ArgoCD + apply the Application that watches this repo
+	kubectl apply -f gitops/00-argocd-namespace.yaml
+	kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.13.1/manifests/install.yaml
+	kubectl wait --for=condition=available --timeout=120s deployment/argocd-server -n argocd
+	kubectl apply -f gitops/20-argocd-ingress.yaml
+	kubectl -n argocd rollout restart deployment/argocd-server
+	kubectl -n argocd rollout status  deployment/argocd-server --timeout=60s
+	kubectl apply -f gitops/30-application.yaml
+	@echo ""
+	@echo "ArgoCD UI: http://argocd.local.test  (add to /etc/hosts: 127.0.0.1 argocd.local.test)"
+	@echo "Admin password:"
+	@kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
+	@echo ""
+
 .PHONY: build
 build: ## Build the docker image
 	docker build -t $(IMAGE) .
@@ -40,9 +55,14 @@ deploy: ## Apply the app manifests with kustomize
 	kubectl apply -k deploy/
 
 .PHONY: up
-up: cluster ingress observability build load deploy ## Full bootstrap from zero
+up: cluster ingress observability build load deploy ## Full bootstrap from zero (no GitOps)
 	@echo "Add to /etc/hosts: 127.0.0.1 ws.local.test grafana.local.test"
 	@echo "Then visit: http://grafana.local.test  (admin / admin)"
+
+.PHONY: up-gitops
+up-gitops: cluster ingress observability build load gitops ## Full bootstrap WITH ArgoCD managing the app
+	@echo "Add to /etc/hosts: 127.0.0.1 ws.local.test grafana.local.test argocd.local.test"
+	@echo "ArgoCD will auto-sync the app from git — no make deploy needed."
 
 .PHONY: redeploy
 redeploy: build load ## Rebuild + reload + roll the deployment

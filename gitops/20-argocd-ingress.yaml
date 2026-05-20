@@ -1,0 +1,32 @@
+# Insecure ArgoCD UI access for local demo. Production would terminate TLS
+# at the ingress (cert-manager + a real cert) and disable the server's own
+# TLS — see the configmap patch below that flips `server.insecure: "true"`
+# to skip the second TLS hop inside the cluster.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+data:
+  server.insecure: "true"
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server
+  namespace: argocd
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: HTTP
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: argocd.local.test
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 80

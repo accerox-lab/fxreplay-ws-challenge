@@ -17,7 +17,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 permissions:
-  contents: read
+  contents: write  # bump-tag job needs to push the tag update back to main
   packages: write
   id-token: write
 
@@ -161,3 +161,46 @@ jobs:
         run: |
           kubectl -n ws-demo describe pods -l app.kubernetes.io/name=ws-server || true
           kubectl -n ws-demo logs -l app.kubernetes.io/name=ws-server --tail=200 --prefix || true
+
+  # -------------------------------------------------------------------------
+  # Stage 4 — GitOps promotion. Only after e2e proves the image is good, we
+  # bump the image tag in `deploy/kustomization.yaml` on main and push it
+  # back. ArgoCD (running in the target cluster) polls the repo, detects the
+  # commit, and rolls the Deployment to the new image. The bot commit carries
+  # `[skip ci]` so this workflow does not re-trigger itself.
+  #
+  # This is the "promoted into a running Kubernetes deployment" step the
+  # challenge asks for: a source code change ends up as a pod running new code
+  # without any human running kubectl.
+  # -------------------------------------------------------------------------
+  bump-tag:
+    needs: e2e
+    runs-on: ubuntu-24.04
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # default token has write because the workflow declared it above;
+          # the checkout action stores it so subsequent `git push` works.
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install kustomize
+        run: |
+          curl -sSL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.4.3/kustomize_v5.4.3_linux_amd64.tar.gz | tar -xz -C /tmp
+          sudo mv /tmp/kustomize /usr/local/bin/
+      - name: Bump image tag to verified SHA
+        working-directory: deploy
+        run: |
+          TAG="sha-$(echo ${{ github.sha }} | cut -c1-7)"
+          kustomize edit set image ws-server=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$TAG
+          echo "Bumped to $TAG"
+      - name: Commit and push (skip CI re-trigger)
+        run: |
+          if git diff --quiet deploy/kustomization.yaml; then
+            echo "No tag change — kustomization already at this SHA."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deploy/kustomization.yaml
+          git commit -m "ci: promote image to sha-$(echo ${{ github.sha }} | cut -c1-7) [skip ci]"
+          git push

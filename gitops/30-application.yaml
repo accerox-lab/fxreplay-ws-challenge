@@ -1,0 +1,35 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ws-server
+  namespace: argocd
+  finalizers:
+    # Without this, deleting the Application leaves the workloads orphaned in
+    # the target namespace. With it, ArgoCD cleans them up.
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/accerox-lab/fxreplay-ws-challenge.git
+    targetRevision: main
+    path: deploy
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ws-demo
+  syncPolicy:
+    automated:
+      # prune: ArgoCD removes resources from the cluster that no longer exist
+      # in git. Combined with selfHeal it means git is the only source of truth.
+      prune: true
+      # selfHeal: revert any manual changes to the cluster back to what git says.
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+      - PrunePropagationPolicy=foreground
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

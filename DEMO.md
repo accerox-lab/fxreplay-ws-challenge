@@ -156,7 +156,46 @@ Watch:
 
 ---
 
-## 7. Tear down
+## 7. The GitOps loop — full CI/CD end-to-end (the *other* killer demo)
+
+This is what the challenge means by *"changes promoted into a running
+deployment"*. Pre-req: `make gitops` ran successfully and the ArgoCD
+Application is `Synced + Healthy`.
+
+Open ArgoCD UI in a tab: `http://argocd.local.test` (login `admin`, password
+from `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d`).
+
+Then in the terminal:
+
+```bash
+# 1. tiny, visible code change
+sed -i 's|<h1>fxreplay-ws-challenge — minimal client</h1>|<h1>fxreplay-ws-challenge — LIVE DEMO v2</h1>|' app/client/index.html
+git add app/client/index.html
+git commit -m "demo: bump client title"
+git push
+```
+
+Now narrate while watching multiple tabs:
+
+- **GitHub Actions** tab — the 4 stages run in sequence: lint → build → e2e → bump-tag.
+- **ArgoCD UI** — the `ws-server` Application card. After the bump-tag commit lands, ArgoCD detects drift within ~3 minutes (or click "REFRESH" → "SYNC" to trigger immediately for the demo).
+- **Lens / `kubectl get pods -w`** — when sync fires, you see the rolling update: new pods come up with the new image SHA, old ones drain.
+- **Browser tab on http://ws.local.test** — refresh after sync completes. The title now reads `LIVE DEMO v2`. End-to-end: **dev pushed code, dev sees new pods running new code**, no manual `kubectl` in the loop.
+
+For the live demo, hit "REFRESH → SYNC" in ArgoCD UI right after the CI bump-tag commit lands. That makes the loop take ~30s instead of waiting for the 3-min poll.
+
+> *"This is the full CI/CD lifecycle: code change in a developer's editor turns
+> into a running pod via image build → registry push → manifest update in git →
+> ArgoCD sync → rolling update with graceful shutdown. The cluster never receives
+> credentials from CI — git is the only source of truth, and ArgoCD is the only
+> thing that talks to the API server. Push-based deploys (CI doing kubectl apply
+> with a kubeconfig in secrets) are the alternative; pull-based with ArgoCD is
+> what most platform teams converge on once they've been bitten by leaked CI
+> credentials or out-of-band cluster changes."*
+
+---
+
+## 8. Tear down
 
 ```bash
 make cluster-down
