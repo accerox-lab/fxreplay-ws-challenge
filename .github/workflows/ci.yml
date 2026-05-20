@@ -11,6 +11,10 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  # Opt-in to Node.js 24 for JS actions. GitHub is migrating off Node 20
+  # (default change ~June 2026); this silences the deprecation warning and
+  # validates our actions work on the new runtime.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 permissions:
   contents: read
