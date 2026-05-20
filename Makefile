@@ -32,9 +32,11 @@ gitops: ## Install ArgoCD + apply the Application that watches this repo
 	kubectl apply -f gitops/00-argocd-namespace.yaml
 	kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.13.1/manifests/install.yaml
 	kubectl wait --for=condition=available --timeout=120s deployment/argocd-server -n argocd
+	kubectl apply -f gitops/15-argocd-config.yaml
 	kubectl apply -f gitops/20-argocd-ingress.yaml
-	kubectl -n argocd rollout restart deployment/argocd-server
+	kubectl -n argocd rollout restart deployment/argocd-server statefulset/argocd-application-controller
 	kubectl -n argocd rollout status  deployment/argocd-server --timeout=60s
+	kubectl -n argocd rollout status  statefulset/argocd-application-controller --timeout=60s
 	kubectl apply -f gitops/30-application.yaml
 	@echo ""
 	@echo "ArgoCD UI: http://argocd.local.test  (add to /etc/hosts: 127.0.0.1 argocd.local.test)"

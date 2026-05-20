@@ -1,0 +1,15 @@
+# Tuning patch for the upstream ArgoCD install: reconciliation polling at 30s
+# instead of the default 180s. Trades a small amount of repo-server CPU and
+# git polling traffic for ~6x faster drift detection — useful for demos and
+# small teams. For large clusters (hundreds of Applications) keep this on
+# the default 180s or wire up GitHub webhooks for instant sync.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  timeout.reconciliation: "30s"
