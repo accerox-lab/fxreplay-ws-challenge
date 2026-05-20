@@ -114,17 +114,39 @@ jobs:
           kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.2/deploy/static/provider/kind/deploy.yaml
           kubectl wait --namespace ingress-nginx --for=condition=ready pod \
             --selector=app.kubernetes.io/component=controller --timeout=120s
-      - name: Set image to the freshly built tag
+      - name: Install Prometheus Operator CRDs (so ServiceMonitor applies)
+        # Just the CRDs, not the full operator. The smoke test doesn't care
+        # whether scraping actually happens; this only ensures `kubectl apply -k`
+        # doesn't error on the unknown CRD kind.
+        run: |
+          for crd in alertmanagerconfigs alertmanagers podmonitors probes prometheusagents prometheuses prometheusrules scrapeconfigs servicemonitors thanosrulers; do
+            kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.76.1/example/prometheus-operator-crd/monitoring.coreos.com_${crd}.yaml
+          done
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pull the freshly built image and side-load into kind
+        # The build job pushed to GHCR (private by default). The runner has
+        # write+read auth via GITHUB_TOKEN. We pull from GHCR and side-load
+        # into the kind cluster so the cluster never needs registry credentials.
+        run: |
+          IMG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-$(echo ${{ github.sha }} | cut -c1-7)"
+          docker pull "$IMG"
+          kind load docker-image "$IMG"
+          echo "IMG=$IMG" >> "$GITHUB_ENV"
+      - name: Set kustomize image to the pulled tag
         working-directory: deploy
-        run: kustomize edit set image ws-server=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-$(echo ${{ github.sha }} | cut -c1-7)
+        run: kustomize edit set image ws-server="$IMG"
       - name: Deploy app
-        run: kubectl apply -k deploy/ --validate=false  # ServiceMonitor CRD is missing here; that's fine
-        continue-on-error: true  # the SMonitor "no matches for kind" is expected without operator
+        run: kubectl apply -k deploy/
       - name: Wait for rollout
         run: |
           kubectl -n ws-demo wait --for=condition=ready pod \
             -l app.kubernetes.io/name=ws-server --timeout=120s
-      - name: Map host port 80 -> ingress (already done by kind config)
+      - name: Show ingress
         run: kubectl get ingress -n ws-demo
       - name: Run cross-pod broadcast smoke test
         run: |
@@ -132,4 +154,6 @@ jobs:
           node hack/broadcast-test.js
       - name: Dump pod logs on failure
         if: failure()
-        run: kubectl -n ws-demo logs -l app.kubernetes.io/name=ws-server --tail=200 --prefix
+        run: |
+          kubectl -n ws-demo describe pods -l app.kubernetes.io/name=ws-server || true
+          kubectl -n ws-demo logs -l app.kubernetes.io/name=ws-server --tail=200 --prefix || true
