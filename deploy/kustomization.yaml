@@ -15,4 +15,4 @@ resources:
 images:
 - name: ws-server
   newName: ghcr.io/accerox-lab/fxreplay-ws-challenge
-  newTag: sha-bfda3dd
+  newTag: sha-7583636
